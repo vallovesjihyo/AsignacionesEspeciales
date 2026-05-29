@@ -17,6 +17,7 @@ import com.example.myapp.background.MyService;
 import com.example.myapp.data.ConfigUtils;
 import com.example.myapp.data.MyData;
 import com.example.myapp.data.MyJSONParser;
+import androidx.core.content.ContextCompat;
 
 public class MainActivity extends Activity {
     int LAUNCH_SIMPLE_ACTIVITY = 1;
@@ -132,13 +133,16 @@ public class MainActivity extends Activity {
             BluetoothDevice bt = data.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
 
             demon.putExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE, bt);
-            startService(demon);
-            // finish(); // Comentado para que la app principal no se cierre
+            ContextCompat.startForegroundService(this, demon);
+            
+            // Abrir la Central de Control inmediatamente
+            Intent dashboardIntent = new Intent(this, DashboardActivity.class);
+            startActivity(dashboardIntent);
         }
     }
 
     public void onGarmin(View v) {
-        Intent intent = new Intent(this, GarminActivity.class);
+        Intent intent = new Intent(this, DashboardActivity.class);
         startActivity(intent);
     }
 }

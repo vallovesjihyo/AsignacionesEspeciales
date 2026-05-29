@@ -1,0 +1,432 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F0F4F8"
+    android:padding="16dp"
+    tools:context=".DashboardActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- CABECERA PRINCIPAL -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginBottom="20dp"
+            android:padding="12dp"
+            android:background="@android:color/transparent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="CENTRAL DE CONTROL DE DISPOSITIVOS"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="#1A237E"
+                android:letterSpacing="0.05"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Monitoreo y Servidor Bluetooth Unificado"
+                android:textSize="12sp"
+                android:textColor="#5C6BC0"
+                android:layout_marginTop="4dp"/>
+        </LinearLayout>
+
+        <!-- TARJETA ARDUINO / ESP32 -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp"
+            app:cardBackgroundColor="#FFFFFF">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Fila de Encabezado de la Tarjeta -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Dispositivo Arduino / ESP32"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="#37474F" />
+
+                    <!-- LED Indicador de Estado -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentRight="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/vArduinoLed"
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:layout_marginRight="6dp"
+                            android:background="@android:color/darker_gray" />
+
+                        <TextView
+                            android:id="@+id/tvArduinoStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Desconectado"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:textColor="#78909C" />
+                    </LinearLayout>
+                </RelativeLayout>
+
+                <!-- Panel de Lectura de Telemetría -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="16dp"
+                    android:padding="8dp"
+                    android:background="#ECEFF1">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💓"
+                        android:textSize="32sp"
+                        android:layout_marginRight="12dp"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Frecuencia Cardíaca"
+                            android:textSize="11sp"
+                            android:textColor="#546E7A" />
+
+                        <TextView
+                            android:id="@+id/tvArduinoBpm"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="-- BPM"
+                            android:textSize="22sp"
+                            android:textStyle="bold"
+                            android:textColor="#263238" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Botones de Control de Arduino -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="8dp"
+                    android:weightSum="2">
+
+                    <Button
+                        android:id="@+id/btnConnectArduino"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginRight="4dp"
+                        android:backgroundTint="#00796B"
+                        android:text="CONECTAR"
+                        android:textSize="12sp"
+                        android:textColor="#FFFFFF" />
+
+                    <Button
+                        android:id="@+id/btnDisconnectArduino"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="4dp"
+                        android:backgroundTint="#D32F2F"
+                        android:text="DESCONECTAR"
+                        android:textSize="12sp"
+                        android:textColor="#FFFFFF" />
+                </LinearLayout>
+
+                <!-- Comandos Adicionales Serial -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:weightSum="4">
+
+                    <Button
+                        android:id="@+id/btnEncender"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginRight="2dp"
+                        android:backgroundTint="#1976D2"
+                        android:text="ON"
+                        android:textSize="10sp"
+                        android:textColor="#FFFFFF" />
+
+                    <Button
+                        android:id="@+id/btnApagar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="2dp"
+                        android:layout_marginRight="2dp"
+                        android:backgroundTint="#37474F"
+                        android:text="OFF"
+                        android:textSize="10sp"
+                        android:textColor="#FFFFFF" />
+
+                    <Button
+                        android:id="@+id/btnStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="2dp"
+                        android:layout_marginRight="2dp"
+                        android:backgroundTint="#8E24AA"
+                        android:text="STATUS"
+                        android:textSize="10sp"
+                        android:textColor="#FFFFFF" />
+
+                    <Button
+                        android:id="@+id/btnReconnect"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="2dp"
+                        android:backgroundTint="#EF6C00"
+                        android:text="RECONN"
+                        android:textSize="10sp"
+                        android:textColor="#FFFFFF" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- TARJETA RELOJ GARMIN -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp"
+            app:cardBackgroundColor="#FFFFFF">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <!-- Fila de Encabezado de la Tarjeta -->
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Reloj Garmin Smartwatch"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="#37474F" />
+
+                    <!-- LED Indicador de Estado -->
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentRight="true"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/vGarminLed"
+                            android:layout_width="10dp"
+                            android:layout_height="10dp"
+                            android:layout_marginRight="6dp"
+                            android:background="@android:color/darker_gray" />
+
+                        <TextView
+                            android:id="@+id/tvGarminStatus"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Desconectado"
+                            android:textSize="11sp"
+                            android:textStyle="bold"
+                            android:textColor="#78909C" />
+                    </LinearLayout>
+                </RelativeLayout>
+
+                <!-- Panel de Lectura de Telemetría -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="16dp"
+                    android:padding="8dp"
+                    android:background="#E8F5E9">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⌚"
+                        android:textSize="32sp"
+                        android:layout_marginRight="12dp"/>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Frecuencia Cardíaca ConnectIQ"
+                            android:textSize="11sp"
+                            android:textColor="#2E7D32" />
+
+                        <TextView
+                            android:id="@+id/tvGarminBpm"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="-- BPM"
+                            android:textSize="22sp"
+                            android:textStyle="bold"
+                            android:textColor="#1B5E20" />
+                    </LinearLayout>
+
+                    <!-- Detalle de Paquete (Seq) -->
+                    <TextView
+                        android:id="@+id/tvGarminSeq"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Seq: --"
+                        android:textSize="11sp"
+                        android:textColor="#4CAF50"
+                        android:layout_marginLeft="8dp"
+                        android:background="#C8E6C9"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="2dp" />
+                </LinearLayout>
+
+                <!-- Controles Sincronización SDK Garmin -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:weightSum="2">
+
+                    <Button
+                        android:id="@+id/btnStartGarmin"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginRight="4dp"
+                        android:backgroundTint="#2E7D32"
+                        android:text="ACTIVAR"
+                        android:textSize="12sp"
+                        android:textColor="#FFFFFF" />
+
+                    <Button
+                        android:id="@+id/btnStopGarmin"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginLeft="4dp"
+                        android:backgroundTint="#C62828"
+                        android:text="DESACTIVAR"
+                        android:textSize="12sp"
+                        android:textColor="#FFFFFF" />
+                </LinearLayout>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- TARJETA LIVE LOG / CONSOLA VIRTUAL -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp"
+            app:cardBackgroundColor="#1E1E1E">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Terminal del Servidor de Control"
+                        android:textSize="13sp"
+                        android:textStyle="bold"
+                        android:textColor="#4CAF50" />
+
+                    <TextView
+                        android:id="@+id/btnClearTerminal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentRight="true"
+                        android:text="LIMPIAR"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:textColor="#B0BEC5"
+                        android:background="#37474F"
+                        android:paddingHorizontal="6dp"
+                        android:paddingVertical="2dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+                </RelativeLayout>
+
+                <!-- Zona de scroll de texto tipo consola -->
+                <ScrollView
+                    android:id="@+id/scrollerTerminal"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:background="#121212"
+                    android:padding="8dp">
+
+                    <TextView
+                        android:id="@+id/tvServerLog"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="[INFO] Iniciando terminal del hub...\n[INFO] Servidor listo. Esperando eventos..."
+                        android:textSize="11sp"
+                        android:textColor="#00FF00"
+                        android:typeface="monospace"/>
+                </ScrollView>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+    </LinearLayout>
+</ScrollView>

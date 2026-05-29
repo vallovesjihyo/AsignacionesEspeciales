@@ -1,49 +1,67 @@
 package com.example.myapp.background;
 
 import android.annotation.SuppressLint;
-import android.app.IntentService;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.Service;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ServiceInfo;
+import android.os.Build;
+import android.os.IBinder;
 import android.util.Log;
 
+import androidx.core.app.NotificationCompat;
+
+import com.example.myapp.MainActivity;
+import com.example.myapp.R;
 import com.example.myapp.SimpleActivity;
-import com.example.myapp.ai.IntentAIModel; // NUEVO: modelo IA local para interpretar lenguaje natural
+import com.example.myapp.ai.IntentAIModel;
 import com.example.myapp.data.ConfigUtils;
 import com.example.myapp.data.MyData;
 import com.example.myapp.data.MyJSONParser;
 import com.example.myapp.garmin.GarminManager;
 
 import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.util.Locale;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLEncoder;
+
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 import okhttp3.Response;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLEncoder;
+public class MyService extends Service {
 
-public class MyService extends IntentService {
-    MyJSONParser parser = null;
-    int offset = -1;
+    // Actions for broadcasting status & data to UI
+    public static final String ACTION_DEVICE_STATUS = "com.example.myapp.ACTION_DEVICE_STATUS";
+    public static final String ACTION_NEW_TELEMETRY = "com.example.myapp.ACTION_NEW_TELEMETRY";
+    public static final String ACTION_SERVER_LOG = "com.example.myapp.ACTION_SERVER_LOG";
+    
+    // Actions for receiving control signals from UI
+    public static final String ACTION_CONTROL_SERVICE = "com.example.myapp.ACTION_CONTROL_SERVICE";
 
-    // NUEVO: instancia del modelo IA local.
-    // Este modelo recibe el mensaje natural de Telegram y devuelve una intención:
-    // ENCENDER, APAGAR, LEER, STATUS, RECONECTAR, SET_WIFI, SET_SERVER, TERMINAR o INVALIDO.
+    private static final String CHANNEL_ID = "DeviceControlServerChannel";
+    private static final int NOTIFICATION_ID = 101;
+
+    private MyJSONParser parser = null;
+    private int offset = -1;
+
     private IntentAIModel modeloIA = new IntentAIModel();
-
-    // Variable para decidir que red usar
     private static final boolean USAR_NGROK = false;
-
-    // Variable que guarda la url del servidor fuera de la red
     private static final String URL_NGROK = "https://5e64-200-68-165-1.ngrok-free.app";
 
     private String getUrlServidor(boolean websocket) {
@@ -54,89 +72,351 @@ public class MyService extends IntentService {
         }
     }
 
-    // Variables separadas para no mezclar respuestas
-    String resTelegram = "";
-    String resServidor = "";
+    private String resTelegram = "";
+    private String resServidor = "";
 
-    ConectarMiBluetooth bt_connect = null;
-    ComunicarConBluetooth bt_comm = null;
+    private ConectarMiBluetooth bt_connect = null;
+    private ComunicarConBluetooth bt_comm = null;
 
     private WebSocket mWebSocket;
     private final OkHttpClient client = new OkHttpClient();
 
     private GarminManager garminManager;
+    private BroadcastReceiver controlReceiver;
 
-    public MyService() {
-        super("MyService");
-    }
+    private boolean isServiceRunning = false;
+    private Thread pollingThread;
 
-    @SuppressLint("MissingPermission")
+    private boolean arduinoConnected = false;
+    private boolean garminConnected = false;
+    private String lastArduinoBpm = "--";
+    private String lastGarminBpm = "--";
+    private int lastGarminSeq = 0;
+    private BluetoothDevice lastBtDevice = null;
+
     @Override
-    protected void onHandleIntent(Intent workIntent) {
-        BluetoothDevice bt = workIntent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
-        Log.e("ON-MyService", "onHandleIntent(): [" + bt.getName() + "]");
-
-        initWebSocket();
-
-        /*
-         * garminManager = new GarminManager(this, new
-         * GarminManager.GarminDataListener() {
-         *
-         * @Override
-         * public void onDataReceived(String bpm) {
-         * emitirDatosAlServidor("garmin", bpm);
-         *
-         * Intent intent = new Intent("GARMIN_BPM_UPDATE");
-         * intent.putExtra("bpm", bpm);
-         * sendBroadcast(intent);
-         * }
-         * });
-         * garminManager.initialize();
-         */
-
-        BroadcastReceiver controlReceiver = new BroadcastReceiver() {
+    public void onCreate() {
+        super.onCreate();
+        Log.d("MyService", "onCreate()");
+        
+        // Registrar receptor de señales de control del UI/Dashboard
+        controlReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                if ("GARMIN_CONTROL".equals(intent.getAction())) {
+                if (ACTION_CONTROL_SERVICE.equals(intent.getAction())) {
                     String cmd = intent.getStringExtra("command");
-                    if ("stop".equals(cmd)) {
-                        garminManager.destroy();
-                    } else if ("start".equals(cmd)) {
-                        garminManager.initialize();
+                    Log.e("MyService", "Comando de control recibido: " + cmd);
+                    
+                    if ("start_garmin".equals(cmd)) {
+                        initGarmin();
+                    } else if ("stop_garmin".equals(cmd)) {
+                        stopGarmin();
+                    } else if ("connect_arduino".equals(cmd)) {
+                        BluetoothDevice device = intent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
+                        if (device != null) {
+                            lastBtDevice = device;
+                        }
+                        if (lastBtDevice != null) {
+                            connectArduino(lastBtDevice);
+                        } else {
+                            broadcastLog("[Control] Error: No hay dispositivo Arduino seleccionado");
+                        }
+                    } else if ("disconnect_arduino".equals(cmd)) {
+                        disconnectArduino();
+                    } else if ("write_arduino".equals(cmd)) {
+                        String payload = intent.getStringExtra("payload");
+                        if (bt_comm != null && payload != null) {
+                            bt_comm.write(payload);
+                            broadcastLog("[Control -> Arduino] Enviado: " + payload.trim());
+                        } else {
+                            broadcastLog("[Control] Error: Arduino no conectado o vacío");
+                        }
+                    } else if ("request_status".equals(cmd)) {
+                        // Re-enviar estados actuales para sincronizar la UI al abrirse
+                        broadcastStatus("arduino", arduinoConnected ? "connected" : "disconnected", 
+                                lastBtDevice != null ? lastBtDevice.getName() : null);
+                        broadcastStatus("garmin", garminConnected ? "connected" : "disconnected", 
+                                garminConnected ? "Activo" : null);
+                        
+                        if (arduinoConnected) {
+                            broadcastTelemetry("arduino", lastArduinoBpm, 0);
+                        }
+                        if (garminConnected) {
+                            broadcastTelemetry("garmin", lastGarminBpm, lastGarminSeq);
+                        }
                     }
                 }
             }
         };
-        registerReceiver(controlReceiver, new IntentFilter("GARMIN_CONTROL"), Context.RECEIVER_EXPORTED);
+        
+        IntentFilter filter = new IntentFilter(ACTION_CONTROL_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(controlReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(controlReceiver, filter);
+        }
+    }
 
-        bt_connect = new ConectarMiBluetooth(bt);
-        bt_connect.execute();
-        bt_comm = new ComunicarConBluetooth(bt_connect.getSocket(), new ComunicarConBluetooth.BluetoothDataListener() {
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        Log.e("MyService", "onStartCommand()");
+        
+        // Iniciar el Foreground Service con su respectiva notificación obligatoria
+        startForegroundService();
+
+        if (intent != null) {
+            BluetoothDevice device = intent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
+            if (device != null) {
+                lastBtDevice = device;
+                // Conectar Arduino al iniciar si se pasó un dispositivo
+                connectArduino(lastBtDevice);
+            }
+        }
+
+        if (!isServiceRunning) {
+            isServiceRunning = true;
+            
+            // Conectar el WebSocket persistente hacia el servidor
+            initWebSocket();
+            
+            // Iniciar Garmin por defecto
+            initGarmin();
+
+            // Levantar hilo de segundo plano para Telegram polling
+            pollingThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    broadcastLog("[Servidor] Hilo de escucha Telegram iniciado.");
+                    MyData data = null;
+                    while (isServiceRunning) {
+                        try {
+                            data = get_updates();
+                            if (data != null) {
+                                process(data);
+                            }
+                            // Dormir un momento para evitar consumo excesivo
+                            Thread.sleep(1500);
+                        } catch (InterruptedException e) {
+                            Log.e("MyService", "Hilo interrumpido");
+                            break;
+                        } catch (Exception e) {
+                            Log.e("MyService", "Excepción en hilo de escucha", e);
+                        }
+                    }
+                    broadcastLog("[Servidor] Hilo de escucha finalizado.");
+                }
+            });
+            pollingThread.start();
+        }
+
+        return START_STICKY;
+    }
+
+    private void startForegroundService() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    "Central de Control de Dispositivos",
+                    NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("Mantiene activa la comunicación con Arduino y Garmin");
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(channel);
+            }
+        }
+
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Servidor de Dispositivos Activo")
+                .setContentText("Monitoreando Arduino y Reloj Garmin...")
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentIntent(pendingIntent)
+                .build();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
+    }
+
+    private void connectArduino(BluetoothDevice bt) {
+        if (bt == null) return;
+        
+        broadcastStatus("arduino", "connecting", bt.getName());
+        new Thread(() -> {
+            try {
+                broadcastLog("[Arduino] Conectando a " + bt.getName() + "...");
+                
+                // Desconectar previo si existe
+                if (bt_comm != null) {
+                    bt_comm.cancel();
+                }
+                if (bt_connect != null) {
+                    try {
+                        bt_connect.getSocket().close();
+                    } catch (Exception ignored) {}
+                }
+
+                bt_connect = new ConectarMiBluetooth(bt);
+                bt_connect.execute();
+                
+                if (bt_connect.getSocket() != null) {
+                    arduinoConnected = true;
+                    broadcastStatus("arduino", "connected", bt.getName());
+                    broadcastLog("[Arduino] ¡Conexión serial SPP establecida!");
+                    
+                    bt_comm = new ComunicarConBluetooth(bt_connect.getSocket(), new ComunicarConBluetooth.BluetoothDataListener() {
+                        @Override
+                        public void onDataReceived(String data) {
+                            String bpm = data.trim();
+                            if (!bpm.isEmpty()) {
+                                lastArduinoBpm = bpm;
+                                broadcastTelemetry("arduino", bpm, 0);
+                                emitirDatosAlServidor("arduino", bpm);
+                            }
+                        }
+                    });
+                    bt_comm.start();
+                } else {
+                    arduinoConnected = false;
+                    broadcastStatus("arduino", "disconnected", null);
+                    broadcastLog("[Arduino] Fallo al abrir socket de conexión.");
+                }
+            } catch (Exception e) {
+                Log.e("MyService", "Error al conectar Arduino", e);
+                arduinoConnected = false;
+                broadcastStatus("arduino", "disconnected", null);
+                broadcastLog("[Arduino] Error en la conexión: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private void disconnectArduino() {
+        arduinoConnected = false;
+        new Thread(() -> {
+            try {
+                if (bt_comm != null) {
+                    bt_comm.cancel();
+                    bt_comm = null;
+                }
+                if (bt_connect != null) {
+                    if (bt_connect.getSocket() != null) {
+                        bt_connect.getSocket().close();
+                    }
+                    bt_connect = null;
+                }
+                broadcastStatus("arduino", "disconnected", null);
+                broadcastLog("[Arduino] Desconectado por el usuario.");
+            } catch (IOException e) {
+                Log.e("MyService", "Error al cerrar socket", e);
+            }
+        }).start();
+    }
+
+    private void initGarmin() {
+        broadcastStatus("garmin", "connecting", "Buscando...");
+        broadcastLog("[Garmin] Inicializando SDK ConnectIQ...");
+        
+        garminManager = new GarminManager(this, new GarminManager.GarminDataListener() {
             @Override
-            public void onDataReceived(String data) {
-                // emitirDatosAlServidor("arduino", data.trim()); // Desactivado temporalmente
+            public void onDataReceived(String bpm, int seq) {
+                lastGarminBpm = bpm;
+                lastGarminSeq = seq;
+                garminConnected = true;
+                
+                broadcastTelemetry("garmin", bpm, seq);
+                emitirDatosAlServidor("garmin", bpm);
             }
         });
-        bt_comm.start(); // Iniciar hilo para recibir latidos
+        
+        garminManager.setStatusListener(new GarminManager.GarminStatusListener() {
+            @Override
+            public void onStatusChanged(String status) {
+                broadcastLog("[Garmin] " + status);
+                if (status.contains("Conectado:")) {
+                    garminConnected = true;
+                    broadcastStatus("garmin", "connected", status.replace("Conectado: ", ""));
+                } else if (status.contains("Desconectado") || status.contains("No se encontraron") || status.contains("Error")) {
+                    garminConnected = false;
+                    broadcastStatus("garmin", "disconnected", status);
+                } else {
+                    broadcastStatus("garmin", "connecting", status);
+                }
+            }
+        });
+        
+        garminManager.initialize();
+    }
 
-        MyData data = null;
+    private void stopGarmin() {
+        garminConnected = false;
+        if (garminManager != null) {
+            garminManager.destroy();
+            garminManager = null;
+        }
+        broadcastStatus("garmin", "disconnected", null);
+        broadcastLog("[Garmin] Monitoreo detenido.");
+    }
 
-        do {
-            data = this.get_updates();
-        } while (data == null || this.process(data));
+    private void broadcastStatus(String device, String status, String name) {
+        Intent intent = new Intent(ACTION_DEVICE_STATUS);
+        intent.putExtra("device", device);
+        intent.putExtra("status", status);
+        intent.putExtra("name", name);
+        sendBroadcast(intent);
+    }
 
-        // garminManager.destroy();
-        unregisterReceiver(controlReceiver);
+    private void broadcastTelemetry(String device, String bpm, int seq) {
+        Intent intent = new Intent(ACTION_NEW_TELEMETRY);
+        intent.putExtra("device", device);
+        intent.putExtra("bpm", bpm);
+        intent.putExtra("seq", seq);
+        sendBroadcast(intent);
+    }
+
+    private void broadcastLog(String message) {
+        Intent intent = new Intent(ACTION_SERVER_LOG);
+        intent.putExtra("message", message);
+        sendBroadcast(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        Log.e("MyService", "onDestroy()");
+        isServiceRunning = false;
+        
+        if (pollingThread != null) {
+            pollingThread.interrupt();
+        }
+        
+        disconnectArduino();
+        stopGarmin();
+
+        if (controlReceiver != null) {
+            unregisterReceiver(controlReceiver);
+        }
 
         if (mWebSocket != null) {
             mWebSocket.close(1000, "Service terminating");
         }
+
+        super.onDestroy();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null; // Servicio no enlazado, se comunica por Intents y Broadcasts
     }
 
     private void initWebSocket() {
         try {
             String url = getUrlServidor(true);
-            // Asegurar protocolo ws/wss
             if (url.startsWith("http")) {
                 url = url.replace("http", "ws");
             }
@@ -148,7 +428,7 @@ public class MyService extends IntentService {
                 @Override
                 public void onOpen(WebSocket webSocket, Response response) {
                     Log.e("ON-MyService", "WebSocket conectado!");
-                    // Saludo inicial
+                    broadcastLog("[Servidor Web] WebSocket conectado exitosamente!");
                     webSocket.send("{\"type\":\"hello\",\"source\":\"android_app\"}");
                 }
 
@@ -160,6 +440,7 @@ public class MyService extends IntentService {
                 @Override
                 public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                     Log.e("ON-MyService", "Error en WebSocket: " + t.getMessage());
+                    broadcastLog("[Servidor Web] Fallo en la conexión WebSocket.");
                 }
 
                 @Override
@@ -178,7 +459,7 @@ public class MyService extends IntentService {
         if (mWebSocket != null) {
             try {
                 JSONObject obj = new JSONObject();
-                obj.put("source", origen); // Usamos "source" para compatibilidad con el servidor
+                obj.put("source", origen);
 
                 try {
                     obj.put("bpm", Integer.parseInt(bpm));
@@ -186,16 +467,14 @@ public class MyService extends IntentService {
                     obj.put("bpm", bpm);
                 }
 
-                obj.put("seq", 0); // Campo seq que espera el servidor
+                obj.put("seq", 0);
                 obj.put("timestamp", System.currentTimeMillis());
 
                 mWebSocket.send(obj.toString());
-                Log.e("ON-MyService", "Dato enviado por WebSocket: " + obj.toString());
+                Log.d("ON-MyService", "Dato enviado por WebSocket: " + obj.toString());
             } catch (Exception e) {
                 Log.e("ON-MyService", "Error enviando dato por WebSocket", e);
             }
-        } else {
-            Log.e("ON-MyService", "No se pudo enviar: WebSocket no inicializado");
         }
     }
 
@@ -253,7 +532,6 @@ public class MyService extends IntentService {
     private void send(String info) {
         Log.e("ON-MyService", "send(): " + info);
         try {
-            // CAMBIO: se codifica el texto para evitar errores si el mensaje tiene espacios, acentos o saltos de línea.
             String textoCodificado = URLEncoder.encode(info, "UTF-8");
 
             URL url = new URL(
@@ -285,9 +563,7 @@ public class MyService extends IntentService {
     }
 
     private MyData get_updates() {
-        Log.e("ON-MyService", "get_updates()");
-        MyData data = null;
-        resTelegram = ""; // ✅ Limpia antes de cada consulta
+        resTelegram = "";
 
         HttpURLConnection conn = null;
         try {
@@ -305,7 +581,6 @@ public class MyService extends IntentService {
             conn.connect();
 
             int status = conn.getResponseCode();
-            Log.e("ON-MyService", "get_updates(): status=" + status);
 
             if (status == 200) {
                 InputStreamReader reader = new InputStreamReader(conn.getInputStream());
@@ -318,36 +593,24 @@ public class MyService extends IntentService {
                 }
                 br.close();
                 resTelegram = sb.toString();
-                Log.e("ON-MyService", "get_updates(): respuesta=" + resTelegram);
 
-                // ✅ Parsea y obtiene los mensajes correctamente
                 this.parser = new MyJSONParser("[" + resTelegram + "]");
-                data = this.parser.getValue();
-
-                Log.e("ON-MyService", "get_updates(): mensajes encontrados=" + data.msg.size());
+                MyData data = this.parser.getValue();
+                return data;
             }
 
-            conn.disconnect();
+            if (conn != null) conn.disconnect();
 
-        } catch (MalformedURLException e) {
-            Log.e("ON-MyService", "get_updates(): MalformedURLException", e);
-            if (conn != null)
-                conn.disconnect();
-        } catch (IOException e) {
-            Log.e("ON-MyService", "get_updates(): IOException", e);
-            if (conn != null)
-                conn.disconnect();
+        } catch (Exception e) {
+            Log.e("MyService", "Error get_updates", e);
+            if (conn != null) conn.disconnect();
         }
 
-        return data;
+        return null;
     }
 
     private boolean process(MyData data) {
-        Log.e("ON-MyService", "process()");
-
-        // ✅ Verifica que haya mensajes antes de procesar
         if (data.msg == null || data.msg.size() == 0) {
-            Log.e("ON-MyService", "process(): No hay mensajes nuevos");
             return true;
         }
 
@@ -355,134 +618,74 @@ public class MyService extends IntentService {
             int update_id = data.update_id.get(i);
             String msg = data.msg.get(i);
 
-            Log.e("ON-MyService", "process(): mensaje=[" + msg + "]");
-
+            broadcastLog("[Telegram -> Servidor] " + msg);
             this.offset = update_id + 1;
 
-            // NUEVO: aquí entra el modelo de IA.
-            // Antes se usaban muchos if con msg.contains("ENCENDER"), msg.contains("APAGAR"), etc.
-            // Ahora el mensaje en lenguaje natural se manda al modelo y el modelo devuelve la intención detectada.
-            String comandoIA = modeloIA.predecir(msg);
+            // Invocar el clasificador Naive Bayes local
+            IntentAIModel.Prediction prediction = modeloIA.predict(msg);
+            IntentAIModel.Intent intent = prediction.intent;
+            
+            Log.e("IA-MODEL", "Comando detectado por IA: " + intent.name() + " (" + prediction.confidence + ")");
+            broadcastLog("[IA Intel] Comando inferido: " + intent.name() + " (" + String.format(Locale.getDefault(), "%.2f", prediction.confidence) + ")");
 
-            Log.e("IA-MODEL", "Comando detectado por IA: " + comandoIA);
-
-            if (comandoIA.equals("ENCENDER")) {
-                bt_comm.write("1\n");
-                this.send("Sensor Encendido");
+            if (intent == IntentAIModel.Intent.INVALIDO || !prediction.valid) {
+                // Comando no válido o no reconocido
+                broadcastLog("[IA Intel] Mensaje ignorado o no coincide con intenciones registradas.");
+                continue;
             }
 
-            else if (comandoIA.equals("APAGAR")) {
-                bt_comm.write("0\n");
-                this.send("Sensor Apagado");
-            }
-
-            else if (comandoIA.equals("LEER")) {
-                Log.e("ON-MyService", "process(): Ejecutando LEER");
+            if (intent == IntentAIModel.Intent.LEER) {
                 String r = get();
                 if (r.isEmpty()) {
                     this.send("El servidor no respondió o está vacío");
+                    broadcastLog("[Acción] Leer: Sin respuesta del servidor.");
                 } else {
                     this.send("Info del servidor:\n" + r);
+                    broadcastLog("[Acción] Leer: Info enviada a Telegram.");
                 }
-            }
-
-            // ── ESP32 Serial-Monitor commands forwarded via BT ────────────────
-
-            else if (comandoIA.equals("STATUS")) {
-                Log.e("ON-MyService", "process(): STATUS detectado por IA");
-                bt_comm.write("status\n");
-                this.send("Comando STATUS enviado al ESP32");
-            }
-
-            else if (comandoIA.equals("RECONECTAR")) {
-                Log.e("ON-MyService", "process(): RECONECTAR detectado por IA");
-                bt_comm.write("reconnect\n");
-                this.send("Comando RECONECTAR enviado al ESP32");
-            }
-
-            // SET WIFI <ssid> <password> or SET WIFI <ssid>
-            else if (comandoIA.equals("SET_WIFI")) {
-                String params = extraerParametrosSetWifi(msg);
-
-                if (params.isEmpty()) {
-                    // CAMBIO: si la IA detecta SET WIFI pero no hay parámetros claros, no se ejecuta.
-                    this.send("SET WIFI detectado, pero faltan parámetros. Usa: SET WIFI nombre_red contraseña");
-                } else {
-                    Log.e("ON-MyService", "process(): SET WIFI params=[" + params + "]");
-                    bt_comm.write("set wifi " + params + "\n");
-                    this.send("Comando SET WIFI enviado al ESP32: " + params);
+            } else {
+                // Para el resto de intenciones válidas (ENCENDER, APAGAR, STATUS, SET_WIFI, SET_IP)
+                String payload = prediction.bluetoothPayload;
+                if (payload != null && !payload.isEmpty()) {
+                    if (bt_comm != null) {
+                        bt_comm.write(payload);
+                        broadcastLog("[Acción IA] Enviando payload a Arduino: " + payload.trim());
+                    } else {
+                        broadcastLog("[Acción IA] Error: Arduino no conectado para ejecutar " + intent.name());
+                    }
                 }
-            }
-
-            // SET SERVER <host> <port> or SET SERVER <host>
-            else if (comandoIA.equals("SET_SERVER")) {
-                String params = extraerParametrosSetServer(msg);
-
-                if (params.isEmpty()) {
-                    // CAMBIO: si la IA detecta SET SERVER pero no hay IP/host claro, no se ejecuta.
-                    this.send("SET SERVER detectado, pero faltan parámetros. Usa: SET SERVER host puerto");
-                } else {
-                    Log.e("ON-MyService", "process(): SET SERVER params=[" + params + "]");
-                    bt_comm.write("set server " + params + "\n");
-                    this.send("Comando SET SERVER enviado al ESP32: " + params);
-                }
-            }
-
-            else if (comandoIA.equals("TERMINAR")) {
-                Log.e("ON-MyService", "process(): TERMINAR recibido");
-                return false;
-            }
-
-            else {
-                // CAMBIO: si el mensaje no coincide con una intención válida, no se involucra el sistema.
-                // Esto cumple la parte de sintaxis invalidable: si no se entiende o no es válido, no ejecuta nada.
-                Log.e("IA-MODEL", "Mensaje ignorado por no coincidir con comandos válidos");
+                this.send(prediction.userResponse);
             }
         }
 
         return true;
     }
 
-    // NUEVO: obtiene parámetros para SET WIFI.
-    // Si el usuario escribe el comando formal, se respeta:
-    // SET WIFI miRed miPassword
-    // Si escribe lenguaje natural, intenta tomar lo que venga después de palabras clave.
     private String extraerParametrosSetWifi(String msg) {
         String upper = msg.toUpperCase();
-
         if (upper.startsWith("SET WIFI ")) {
             return msg.substring(9).trim();
         }
-
         if (upper.contains("WIFI")) {
             int index = upper.indexOf("WIFI") + 4;
             return msg.substring(index).replace("a", "").replace(":", "").trim();
         }
-
         return "";
     }
 
-    // NUEVO: obtiene parámetros para SET SERVER.
-    // Se usa para frases como:
-    // SET SERVER 192.168.1.50 3010
-    // cambia el servidor a 192.168.1.50 3010
     private String extraerParametrosSetServer(String msg) {
         String upper = msg.toUpperCase();
-
         if (upper.startsWith("SET SERVER ")) {
             return msg.substring(11).trim();
         }
-
         if (upper.contains("SERVIDOR")) {
             int index = upper.indexOf("SERVIDOR") + 8;
             return msg.substring(index).replace("a", "").replace(":", "").trim();
         }
-
         if (upper.contains("SERVER")) {
             int index = upper.indexOf("SERVER") + 6;
             return msg.substring(index).replace("a", "").replace(":", "").trim();
         }
-
         return "";
     }
 }
