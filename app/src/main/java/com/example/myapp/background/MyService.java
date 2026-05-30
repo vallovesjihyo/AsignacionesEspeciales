@@ -94,57 +94,62 @@ public class MyService extends Service {
     private int lastGarminSeq = 0;
     private BluetoothDevice lastBtDevice = null;
 
+    private void processControlCommand(String cmd, Intent intent) {
+        if (cmd == null) return;
+        Log.e("MyService", "Procesando comando de control: " + cmd);
+        
+        if ("start_garmin".equals(cmd)) {
+            initGarmin();
+        } else if ("stop_garmin".equals(cmd)) {
+            stopGarmin();
+        } else if ("connect_arduino".equals(cmd)) {
+            BluetoothDevice device = intent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
+            if (device != null) {
+                lastBtDevice = device;
+            }
+            if (lastBtDevice != null) {
+                connectArduino(lastBtDevice);
+            } else {
+                broadcastLog("[Control] Error: No hay dispositivo Arduino seleccionado");
+            }
+        } else if ("disconnect_arduino".equals(cmd)) {
+            disconnectArduino();
+        } else if ("write_arduino".equals(cmd)) {
+            String payload = intent.getStringExtra("payload");
+            if (bt_comm != null && payload != null) {
+                bt_comm.write(payload);
+                broadcastLog("[Control -> Arduino] Enviado: " + payload.trim());
+            } else {
+                broadcastLog("[Control] Error: Arduino no conectado o vacío");
+            }
+        } else if ("request_status".equals(cmd)) {
+            // Re-enviar estados actuales para sincronizar la UI al abrirse
+            broadcastStatus("arduino", arduinoConnected ? "connected" : "disconnected", 
+                    lastBtDevice != null ? lastBtDevice.getName() : null);
+            broadcastStatus("garmin", garminConnected ? "connected" : "disconnected", 
+                    garminConnected ? "Activo" : null);
+            
+            if (arduinoConnected) {
+                broadcastTelemetry("arduino", lastArduinoBpm, 0);
+            }
+            if (garminConnected) {
+                broadcastTelemetry("garmin", lastGarminBpm, lastGarminSeq);
+            }
+        }
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
         Log.d("MyService", "onCreate()");
         
-        // Registrar receptor de señales de control del UI/Dashboard
+        // Registrar receptor de señales de control del UI/Dashboard (para compatibilidad de broadcast)
         controlReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
                 if (ACTION_CONTROL_SERVICE.equals(intent.getAction())) {
                     String cmd = intent.getStringExtra("command");
-                    Log.e("MyService", "Comando de control recibido: " + cmd);
-                    
-                    if ("start_garmin".equals(cmd)) {
-                        initGarmin();
-                    } else if ("stop_garmin".equals(cmd)) {
-                        stopGarmin();
-                    } else if ("connect_arduino".equals(cmd)) {
-                        BluetoothDevice device = intent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
-                        if (device != null) {
-                            lastBtDevice = device;
-                        }
-                        if (lastBtDevice != null) {
-                            connectArduino(lastBtDevice);
-                        } else {
-                            broadcastLog("[Control] Error: No hay dispositivo Arduino seleccionado");
-                        }
-                    } else if ("disconnect_arduino".equals(cmd)) {
-                        disconnectArduino();
-                    } else if ("write_arduino".equals(cmd)) {
-                        String payload = intent.getStringExtra("payload");
-                        if (bt_comm != null && payload != null) {
-                            bt_comm.write(payload);
-                            broadcastLog("[Control -> Arduino] Enviado: " + payload.trim());
-                        } else {
-                            broadcastLog("[Control] Error: Arduino no conectado o vacío");
-                        }
-                    } else if ("request_status".equals(cmd)) {
-                        // Re-enviar estados actuales para sincronizar la UI al abrirse
-                        broadcastStatus("arduino", arduinoConnected ? "connected" : "disconnected", 
-                                lastBtDevice != null ? lastBtDevice.getName() : null);
-                        broadcastStatus("garmin", garminConnected ? "connected" : "disconnected", 
-                                garminConnected ? "Activo" : null);
-                        
-                        if (arduinoConnected) {
-                            broadcastTelemetry("arduino", lastArduinoBpm, 0);
-                        }
-                        if (garminConnected) {
-                            broadcastTelemetry("garmin", lastGarminBpm, lastGarminSeq);
-                        }
-                    }
+                    processControlCommand(cmd, intent);
                 }
             }
         };
@@ -165,11 +170,15 @@ public class MyService extends Service {
         startForegroundService();
 
         if (intent != null) {
-            BluetoothDevice device = intent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
-            if (device != null) {
-                lastBtDevice = device;
-                // Conectar Arduino al iniciar si se pasó un dispositivo
-                connectArduino(lastBtDevice);
+            String cmd = intent.getStringExtra("command");
+            if (cmd != null) {
+                processControlCommand(cmd, intent);
+            } else {
+                BluetoothDevice device = intent.getParcelableExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE);
+                if (device != null) {
+                    lastBtDevice = device;
+                    connectArduino(lastBtDevice);
+                }
             }
         }
 
@@ -266,10 +275,10 @@ public class MyService extends Service {
                 bt_connect = new ConectarMiBluetooth(bt);
                 bt_connect.execute();
                 
-                if (bt_connect.getSocket() != null) {
+                if (bt_connect.getSocket() != null && bt_connect.getSocket().isConnected()) {
                     arduinoConnected = true;
                     broadcastStatus("arduino", "connected", bt.getName());
-                    broadcastLog("[Arduino] ¡Conexión serial SPP establecida!");
+                    broadcastLog("[Arduino] ¡Conexión serial SPP establecida con " + bt.getName() + "!");
                     
                     bt_comm = new ComunicarConBluetooth(bt_connect.getSocket(), new ComunicarConBluetooth.BluetoothDataListener() {
                         @Override
@@ -286,7 +295,7 @@ public class MyService extends Service {
                 } else {
                     arduinoConnected = false;
                     broadcastStatus("arduino", "disconnected", null);
-                    broadcastLog("[Arduino] Fallo al abrir socket de conexión.");
+                    broadcastLog("[Arduino] Error: No se pudo establecer canal RFCOMM (¿está encendido y previamente emparejado en el sistema?).");
                 }
             } catch (Exception e) {
                 Log.e("MyService", "Error al conectar Arduino", e);
@@ -630,7 +639,8 @@ public class MyService extends Service {
 
             if (intent == IntentAIModel.Intent.INVALIDO || !prediction.valid) {
                 // Comando no válido o no reconocido
-                broadcastLog("[IA Intel] Mensaje ignorado o no coincide con intenciones registradas.");
+                broadcastLog("[IA Intel] Mensaje ignorado o no coincide con intenciones registradas: " + prediction.userResponse);
+                this.send(prediction.userResponse);
                 continue;
             }
 

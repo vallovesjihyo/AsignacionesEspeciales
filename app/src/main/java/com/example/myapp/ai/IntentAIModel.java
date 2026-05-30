@@ -60,12 +60,62 @@ public class IntentAIModel {
         train();
     }
 
+    private Intent semanticMatch(String normalizedText) {
+        String s = " " + normalizedText + " ";
+        
+        // 1. APAGAR
+        if (s.contains(" apag") || s.contains(" detene") || s.contains(" deten") || s.contains(" desactiv") 
+                || s.contains(" para ") || s.contains(" paralo") || s.contains(" suspend") || s.contains(" termin")) {
+            return Intent.APAGAR;
+        }
+        
+        // 2. ENCENDER
+        if (s.contains(" encend") || s.contains(" enciend") || s.contains(" prend") || s.contains(" activ") 
+                || s.contains(" inici") || s.contains(" arranc") || s.contains(" comenz") || s.contains(" empiez")) {
+            return Intent.ENCENDER;
+        }
+
+        // 3. SET_WIFI (Si contiene red, wifi, net, contrasena y comandos de cambio)
+        if ((s.contains(" wifi") || s.contains(" red ") || s.contains(" net ") || s.contains(" ssid") || s.contains(" contra") || s.contains(" clave"))
+                && (s.contains(" cambi") || s.contains(" configur") || s.contains(" pon ") || s.contains(" actualiz") || s.contains(" modific") || s.contains(" set "))) {
+            return Intent.SET_WIFI;
+        }
+
+        // 4. SET_IP
+        if ((s.contains(" ip ") || s.contains(" servidor") || s.contains(" server") || s.contains(" host") || s.contains(" puerto") || s.contains(" port"))
+                && (s.contains(" cambi") || s.contains(" configur") || s.contains(" pon ") || s.contains(" actualiz") || s.contains(" modific") || s.contains(" set "))) {
+            return Intent.SET_IP;
+        }
+
+        // 5. STATUS
+        if (s.contains(" status") || s.contains(" estado") || s.contains(" estatus") || s.contains(" revis") 
+                || s.contains(" verific") || s.contains(" comprueb") || s.contains(" conex")) {
+            return Intent.STATUS;
+        }
+
+        // 6. LEER
+        if (s.contains(" leer") || s.contains(" consult") || s.contains(" mostr") || s.contains(" trae") 
+                || s.contains(" analiz") || s.contains(" obten")) {
+            return Intent.LEER;
+        }
+
+        return null;
+    }
+
     public Prediction predict(String rawText) {
         String text = normalize(rawText);
         if (text.length() == 0) {
             return new Prediction(Intent.INVALIDO, 0.0);
         }
 
+        // 1. Intentar coincidencia semántica / heurística de alta prioridad
+        Intent semanticIntent = semanticMatch(text);
+        if (semanticIntent != null) {
+            Prediction p = new Prediction(semanticIntent, 1.0); // Confianza máxima para coincidencia semántica
+            return validateAndBuildCommand(p, rawText, text);
+        }
+
+        // 2. Si no coincide semánticamente, recurrir al clasificador probabilístico Naive Bayes
         Prediction prediction = classify(text);
 
         if (prediction.confidence < MIN_CONFIDENCE) {
@@ -99,12 +149,16 @@ public class IntentAIModel {
         add(Intent.SET_WIFI,
                 "set wifi", "cambiar wifi", "configurar wifi", "cambia la red", "modifica internet",
                 "actualiza la red wifi", "conecta a esta red", "cambia ssid", "cambia contrasena wifi",
-                "pon la red de internet", "usa esta red wifi");
+                "pon la red de internet", "usa esta red wifi", "cambia la contra del net",
+                "cambia la contraseña a la red", "cambia contraseña", "cambiar la clave de la red",
+                "contraseña de la red", "conecta el wifi a la red", "clave del wifi",
+                "cambia la contra a la red", "contra 12345678", "password de la red net");
 
         add(Intent.SET_IP,
                 "set ip", "cambiar ip", "configurar ip", "cambia servidor", "modifica servidor",
                 "actualiza la ip del servidor", "pon la ip", "cambia host", "set server",
-                "conecta al servidor", "usa esta direccion del servidor");
+                "conecta al servidor", "usa esta direccion del servidor", "cambia la ip de la red",
+                "dirección del host del servidor", "cambiar ip del servidor");
 
         add(Intent.INVALIDO,
                 "hola", "gracias", "buenos dias", "que haces", "cuentame algo",
@@ -180,14 +234,14 @@ public class IntentAIModel {
             case ENCENDER:
                 p.valid = true;
                 p.officialCommand = "ENCENDER";
-                p.bluetoothPayload = "1";
+                p.bluetoothPayload = "1\n";
                 p.userResponse = "IA: instruccion detectada ENCENDER. Sensor encendido.";
                 return p;
 
             case APAGAR:
                 p.valid = true;
                 p.officialCommand = "APAGAR";
-                p.bluetoothPayload = "0";
+                p.bluetoothPayload = "0\n";
                 p.userResponse = "IA: instruccion detectada APAGAR. Sensor apagado.";
                 return p;
 
@@ -217,12 +271,56 @@ public class IntentAIModel {
     }
 
     private Prediction buildWifiCommand(Prediction p, String rawText, String normalizedText) {
-        String ssid = findValue(rawText, "ssid", "red", "wifi");
-        String pass = findValue(rawText, "password", "pass", "contrasena", "contraseña", "clave");
+        String ssid = "";
+        String pass = "";
 
+        // Método 1: Búsqueda explícita con prefijos (por ejemplo: red: vale, contra: 123456)
+        ssid = findValue(rawText, "ssid", "red", "wifi");
+        pass = findValue(rawText, "password", "pass", "contrasena", "contraseña", "contra", "clave");
+
+        // Método 2: Buscar comillas dobles o curvas (por ejemplo: red "vale" contraseña "1234")
         if (ssid.length() == 0) {
             ssid = findQuoted(rawText, 0);
-            pass = findQuoted(rawText, 1);
+            if (pass.length() == 0) {
+                pass = findQuoted(rawText, 1);
+            }
+        }
+
+        // Método 3: Análisis lingüístico mediante expresiones regulares robustas en español
+        if (ssid.length() == 0 || pass.length() == 0) {
+            // Intentamos capturar: red [SSID] con contra [PASS] o red [SSID] clave [PASS]
+            Pattern linguisticPattern = Pattern.compile(
+                "(?i)red\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?\\s+(?:con\\s+)?(?:contra|contrase[nñ]a|clave|pass|password)\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?"
+            );
+            Matcher m = linguisticPattern.matcher(rawText);
+            if (m.find()) {
+                if (ssid.length() == 0) ssid = m.group(1).trim();
+                if (pass.length() == 0) pass = m.group(2).trim();
+            }
+        }
+
+        // Método 4: Búsqueda de palabra clave "contra/contraseña/clave" al final
+        if (ssid.length() == 0 || pass.length() == 0) {
+            Pattern passPattern = Pattern.compile("(?i)(?:contra|contrase[nñ]a|clave|pass|password)\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?");
+            Matcher m = passPattern.matcher(rawText);
+            if (m.find()) {
+                if (pass.length() == 0) pass = m.group(1).trim();
+                
+                Pattern ssidPattern = Pattern.compile("(?i)red\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?");
+                Matcher mSsid = ssidPattern.matcher(rawText);
+                if (mSsid.find() && ssid.length() == 0) {
+                    ssid = mSsid.group(1).trim();
+                }
+            }
+        }
+
+        // Si aún así no tenemos el SSID pero el usuario escribió "red [Nombre]"
+        if (ssid.length() == 0) {
+            Pattern ssidPattern = Pattern.compile("(?i)red\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?");
+            Matcher mSsid = ssidPattern.matcher(rawText);
+            if (mSsid.find()) {
+                ssid = mSsid.group(1).trim();
+            }
         }
 
         if (ssid.length() == 0) {
@@ -267,7 +365,7 @@ public class IntentAIModel {
 
     private String findValue(String raw, String... keys) {
         for (String key : keys) {
-            Pattern p = Pattern.compile("(?i)" + Pattern.quote(key) + "\\s*[:=]\\s*\\\"?([^\\\";,\\n]+)\\\"?");
+            Pattern p = Pattern.compile("(?i)" + Pattern.quote(key) + "\\s*[:=]\\s*[\"''“”‘’]?([^\\\";,\\n]+)[\"''“”‘’]?");
             Matcher m = p.matcher(raw);
             if (m.find()) return m.group(1).trim();
         }
@@ -275,7 +373,7 @@ public class IntentAIModel {
     }
 
     private String findQuoted(String raw, int index) {
-        Matcher m = Pattern.compile("\"([^\"]+)\"").matcher(raw);
+        Matcher m = Pattern.compile("[\"''“”‘’]([^\"''“”‘’]+)[\"''“”‘’]").matcher(raw);
         int i = 0;
         while (m.find()) {
             if (i == index) return m.group(1).trim();
@@ -325,5 +423,41 @@ public class IntentAIModel {
         n = n.toLowerCase(Locale.ROOT);
         n = n.replaceAll("[^a-z0-9.:-]+", " ");
         return n.trim().replaceAll("\\s+", " ");
+    }
+
+    public static void main(String[] args) {
+        System.out.println("==================================================");
+        System.out.println("   IntentAIModel - Consola de Prueba Standalone   ");
+        System.out.println("==================================================");
+        System.out.println("Inicializando modelo local Naive Bayes...");
+        
+        IntentAIModel model = new IntentAIModel();
+        System.out.println("¡Modelo cargado y entrenado exitosamente!");
+        System.out.println("Escribe tus instrucciones (o escribe 'salir' para terminar):");
+        System.out.println("--------------------------------------------------");
+
+        java.util.Scanner scanner = new java.util.Scanner(System.in);
+        while (true) {
+            System.out.print("> ");
+            if (!scanner.hasNextLine()) break;
+            String input = scanner.nextLine().trim();
+            if (input.equalsIgnoreCase("salir") || input.equalsIgnoreCase("exit")) {
+                System.out.println("Saliendo de la consola de pruebas. ¡Hasta luego!");
+                break;
+            }
+
+            if (input.isEmpty()) continue;
+
+            Prediction pred = model.predict(input);
+            System.out.println("\n[Resultado de Inferencia]");
+            System.out.println(" - Intencion Inferida: " + pred.intent);
+            System.out.println(" - Nivel de Confianza: " + String.format(Locale.US, "%.4f", pred.confidence));
+            System.out.println(" - ¿Es Valida?:       " + (pred.valid ? "SI" : "NO"));
+            System.out.println(" - Comando Oficial:   " + pred.officialCommand);
+            System.out.println(" - Payload Bluetooth:  " + (pred.bluetoothPayload.isEmpty() ? "(vacio)" : pred.bluetoothPayload.replace("\n", "\\n")));
+            System.out.println(" - Respuesta Usuario:  " + pred.userResponse);
+            System.out.println("--------------------------------------------------");
+        }
+        scanner.close();
     }
 }

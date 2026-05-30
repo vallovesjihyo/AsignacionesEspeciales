@@ -15,6 +15,7 @@ import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.Log;
 
 import com.example.myapp.background.MyService;
 
@@ -133,19 +134,35 @@ public class DashboardActivity extends Activity {
     }
 
     private void sendControlCommand(String command, String extraKey, String extraValue) {
-        Intent intent = new Intent(MyService.ACTION_CONTROL_SERVICE);
+        Intent intent = new Intent(this, MyService.class);
         intent.putExtra("command", command);
         if (extraKey != null && extraValue != null) {
             intent.putExtra(extraKey, extraValue);
         }
-        sendBroadcast(intent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e("DashboardActivity", "Error al enviar comando al servicio", e);
+        }
     }
 
     private void sendConnectCommand(BluetoothDevice device) {
-        Intent intent = new Intent(MyService.ACTION_CONTROL_SERVICE);
+        Intent intent = new Intent(this, MyService.class);
         intent.putExtra("command", "connect_arduino");
         intent.putExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE, device);
-        sendBroadcast(intent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        } catch (Exception e) {
+            Log.e("DashboardActivity", "Error al enviar comando de conexion al servicio", e);
+        }
     }
 
     @Override

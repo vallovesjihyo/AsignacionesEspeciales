@@ -81,6 +81,20 @@ public class SimpleActivity extends Activity {
 
         if( bAdapter.isEnabled() ){
             btnBuscarDispositivo.setEnabled(true);
+            
+            // Cargar dispositivos vinculados/emparejados de inmediato
+            try {
+                @SuppressLint("MissingPermission")
+                java.util.Set<BluetoothDevice> pairedDevices = bAdapter.getBondedDevices();
+                if (pairedDevices != null && pairedDevices.size() > 0) {
+                    for (BluetoothDevice device : pairedDevices) {
+                        arrayDevices.add(device);
+                    }
+                    arrayAdapter.notifyDataSetChanged();
+                }
+            } catch (Exception e) {
+                Log.e("SimpleActivity", "Error cargando vinculados", e);
+            }
         }
 
         BluetoothAdmin.registrarEventosBluetooth(this, bReceiver);
@@ -145,19 +159,26 @@ public class SimpleActivity extends Activity {
             }
             else if (BluetoothDevice.ACTION_FOUND.equals(action))
             {
-                //AGREGAR dispositivos encontrados en list view
+                // AGREGAR dispositivos encontrados en list view
                 Log.e("ON-SimpleActivity", "onReceive(): ACTION_FOUND");
 
                 BluetoothDevice dispositivo = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                String descripcionDispositivo = dispositivo.getName() + " [" + dispositivo.getAddress() + "]";
-                //Toast.makeText(getBaseContext(), "" + descripcionDispositivo, Toast.LENGTH_SHORT).show();
-
-                if( descripcionDispositivo.contains("HC-05") || descripcionDispositivo.contains("ESP")   )
-                {
-                    // Añadimos el dispositivo al array
-                    arrayDevices.add(dispositivo);
-                    arrayAdapter.notifyDataSetChanged();
-                    bAdapter.cancelDiscovery();
+                if (dispositivo != null) {
+                    String nombre = dispositivo.getName();
+                    if (nombre != null && !nombre.isEmpty()) {
+                        // Evitar duplicados en la lista
+                        boolean exists = false;
+                        for (BluetoothDevice d : arrayDevices) {
+                            if (d.getAddress().equals(dispositivo.getAddress())) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) {
+                            arrayDevices.add(dispositivo);
+                            arrayAdapter.notifyDataSetChanged();
+                        }
+                    }
                 }
             }
             else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action))
