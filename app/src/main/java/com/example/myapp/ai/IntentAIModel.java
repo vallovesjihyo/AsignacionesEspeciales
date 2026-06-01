@@ -60,42 +60,60 @@ public class IntentAIModel {
         train();
     }
 
-    private Intent semanticMatch(String normalizedText) {
+    private String replaceSynonyms(String normalizedText) {
         String s = " " + normalizedText + " ";
         
-        // 1. APAGAR
-        if (s.contains(" apag") || s.contains(" detene") || s.contains(" deten") || s.contains(" desactiv") 
-                || s.contains(" para ") || s.contains(" paralo") || s.contains(" suspend") || s.contains(" termin")) {
-            return Intent.APAGAR;
-        }
+        // Raíces de APAGAR
+        s = s.replaceAll("(?i)\\b(apaga[n]?|apagalo|apagala|apagame|apagado|desactiva[n]?|desactivalo|desactivala|deten[n]?|detiene[n]?|detenlo|detenla|detenerlo|para[sn]?|paralo|parala|suspende[n]?|termina[n]?|desconecta[n]?|desconectalo|desconectala)\\b", "apagar");
         
-        // 2. ENCENDER
-        if (s.contains(" encend") || s.contains(" enciend") || s.contains(" prend") || s.contains(" activ") 
-                || s.contains(" inici") || s.contains(" arranc") || s.contains(" comenz") || s.contains(" empiez")) {
-            return Intent.ENCENDER;
-        }
+        // Raíces de ENCENDER
+        s = s.replaceAll("(?i)\\b(enciende[n]?|encendiendo|encendido|prendi[o]?[a-z]*|prende[n]?|prendelo|prendela|prendeme|activa[n]?|activalo|activala|inicia[sn]?|inicialo|iniciala|arranca[sn]?|arrancalo|comienza[n]?|empieza[n]?|habilita[n]?|habilitar|conecta[n]?|conectalo|conectala)\\b", "encender");
+        
+        // Raíces de LEER
+        s = s.replaceAll("(?i)\\b(lee[sn]?|leyendo|leido|consulta[sn]?|muestra[sn]?|mostrarmelo|muestramelo|trae[rn]?|traelo|obten[g]?[o]?[a-z]*|obtenerlo|analiza[rn]?|verlo|registros|lecturas|mediciones|datos)\\b", "leer");
+        
+        // Raíces de STATUS
+        s = s.replaceAll("(?i)\\b(estado|estatus|status|conexion|conectado|conectividad|revisa[rn]?|verifica[rn]?|comprueba[rn]?|funcionamiento|funcionando|info|informacion)\\b", "status");
+        
+        // Raíces de WIFI
+        s = s.replaceAll("(?i)\\b(wifi|red|net|ssid|contrase[nñ]a|contra|clave|password|pass)\\b", "wifi");
+        
+        // Raíces de IP
+        s = s.replaceAll("(?i)\\b(ip|servidor|server|host|puerto|port)\\b", "ip");
+        
+        return s.trim().replaceAll("\\s+", " ");
+    }
 
-        // 3. SET_WIFI (Si contiene red, wifi, net, contrasena y comandos de cambio)
-        if ((s.contains(" wifi") || s.contains(" red ") || s.contains(" net ") || s.contains(" ssid") || s.contains(" contra") || s.contains(" clave"))
-                && (s.contains(" cambi") || s.contains(" configur") || s.contains(" pon ") || s.contains(" actualiz") || s.contains(" modific") || s.contains(" set "))) {
+    private Intent semanticMatch(String preprocessedText) {
+        String s = " " + preprocessedText + " ";
+        
+        // 1. SET_WIFI (Alta prioridad: configuración de red)
+        if (s.contains(" wifi ")) {
             return Intent.SET_WIFI;
         }
 
-        // 4. SET_IP
-        if ((s.contains(" ip ") || s.contains(" servidor") || s.contains(" server") || s.contains(" host") || s.contains(" puerto") || s.contains(" port"))
-                && (s.contains(" cambi") || s.contains(" configur") || s.contains(" pon ") || s.contains(" actualiz") || s.contains(" modific") || s.contains(" set "))) {
+        // 2. SET_IP (Alta prioridad: configuración de servidor)
+        if (s.contains(" ip ")) {
             return Intent.SET_IP;
         }
 
+        // 3. APAGAR
+        if (s.contains(" apagar ")) {
+            return Intent.APAGAR;
+        }
+        
+        // 4. ENCENDER
+        if (s.contains(" encender ")) {
+            return Intent.ENCENDER;
+        }
+
         // 5. STATUS
-        if (s.contains(" status") || s.contains(" estado") || s.contains(" estatus") || s.contains(" revis") 
-                || s.contains(" verific") || s.contains(" comprueb") || s.contains(" conex")) {
+        if (s.contains(" status ")) {
             return Intent.STATUS;
         }
 
         // 6. LEER
-        if (s.contains(" leer") || s.contains(" consult") || s.contains(" mostr") || s.contains(" trae") 
-                || s.contains(" analiz") || s.contains(" obten")) {
+        if (s.contains(" leer ")) {
             return Intent.LEER;
         }
 
@@ -103,48 +121,61 @@ public class IntentAIModel {
     }
 
     public Prediction predict(String rawText) {
-        String text = normalize(rawText);
-        if (text.length() == 0) {
+        String normalizedText = normalize(rawText);
+        if (normalizedText.length() == 0) {
             return new Prediction(Intent.INVALIDO, 0.0);
         }
 
+        String preprocessedText = replaceSynonyms(normalizedText);
+
         // 1. Intentar coincidencia semántica / heurística de alta prioridad
-        Intent semanticIntent = semanticMatch(text);
+        Intent semanticIntent = semanticMatch(preprocessedText);
         if (semanticIntent != null) {
             Prediction p = new Prediction(semanticIntent, 1.0); // Confianza máxima para coincidencia semántica
-            return validateAndBuildCommand(p, rawText, text);
+            return validateAndBuildCommand(p, rawText, preprocessedText);
         }
 
         // 2. Si no coincide semánticamente, recurrir al clasificador probabilístico Naive Bayes
-        Prediction prediction = classify(text);
+        Prediction prediction = classify(preprocessedText);
 
         if (prediction.confidence < MIN_CONFIDENCE) {
             return new Prediction(Intent.INVALIDO, prediction.confidence);
         }
 
-        return validateAndBuildCommand(prediction, rawText, text);
+        return validateAndBuildCommand(prediction, rawText, preprocessedText);
     }
 
     private void buildTrainingData() {
         add(Intent.ENCENDER,
                 "encender", "prender", "activar", "iniciar sensor", "enciende el sensor",
                 "activa el sensor cardiaco", "comienza la lectura", "inicia la lectura",
-                "empieza a medir", "arranca el sensor", "quiero iniciar el sensor");
+                "empieza a medir", "arranca el sensor", "quiero iniciar el sensor",
+                "conectar sensor", "dale energia al sensor", "activa el monitoreo",
+                "comienza a registrar", "habilita las lecturas", "enciendelo por favor",
+                "prende el bluetooth", "iniciar transmision");
 
         add(Intent.APAGAR,
                 "apagar", "detener", "desactivar", "apaga el sensor", "deten la lectura",
                 "para el sensor", "suspende la medicion", "deja de enviar datos",
-                "termina la lectura", "desconecta el sensor cardiaco");
+                "termina la lectura", "desconecta el sensor cardiaco",
+                "apagar el sensor", "desconectar el sensor", "apaga la medicion",
+                "para de medir", "quita la energia", "detener el monitoreo",
+                "apagarlo por favor", "desconecta el bluetooth", "cancela las lecturas");
 
         add(Intent.LEER,
                 "leer", "consultar datos", "leer informacion", "trae los datos", "muestra las lecturas",
                 "consulta el servidor", "obtener informacion", "ver registros", "analiza los datos",
-                "quiero ver la informacion guardada");
+                "quiero ver la informacion guardada", "ver datos", "mostrar registros",
+                "descargar base de datos", "dame los registros", "muestra la informacion",
+                "traer historico", "ver mediciones anteriores", "que midio el sensor",
+                "trae las lecturas de hoy", "obtener historicos");
 
         add(Intent.STATUS,
                 "status", "estado", "estatus", "revisa estado", "como esta conectado",
                 "verifica conexion", "comprueba el servidor", "estado del sistema", "estado del sensor",
-                "dime si esta conectado", "revisa si el servidor esta activo");
+                "dime si esta conectado", "revisa si el servidor esta activo",
+                "estado de conexion", "esta conectado", "dime si funciona", "checa la conexion",
+                "verificar estado", "saber si esta activo", "revisar bluetooth", "esta prendido");
 
         add(Intent.SET_WIFI,
                 "set wifi", "cambiar wifi", "configurar wifi", "cambia la red", "modifica internet",
@@ -152,17 +183,22 @@ public class IntentAIModel {
                 "pon la red de internet", "usa esta red wifi", "cambia la contra del net",
                 "cambia la contraseña a la red", "cambia contraseña", "cambiar la clave de la red",
                 "contraseña de la red", "conecta el wifi a la red", "clave del wifi",
-                "cambia la contra a la red", "contra 12345678", "password de la red net");
+                "cambia la contra a la red", "contra 12345678", "password de la red net",
+                "configurar internet", "conectar a la red", "actualizar credenciales wifi",
+                "poner wifi de la casa", "modificar clave wifi", "conectar al wifi", "cambiar ssid de red");
 
         add(Intent.SET_IP,
                 "set ip", "cambiar ip", "configurar ip", "cambia servidor", "modifica servidor",
                 "actualiza la ip del servidor", "pon la ip", "cambia host", "set server",
                 "conecta al servidor", "usa esta direccion del servidor", "cambia la ip de la red",
-                "dirección del host del servidor", "cambiar ip del servidor");
+                "dirección del host del servidor", "cambiar ip del servidor",
+                "configurar ip del servidor", "cambiar direccion del host", "cambiar puerto del servidor",
+                "actualizar ip de la base de datos", "poner servidor ip", "modificar host");
 
         add(Intent.INVALIDO,
                 "hola", "gracias", "buenos dias", "que haces", "cuentame algo",
-                "ayuda", "mensaje de prueba", "como estas", "no se", "texto cualquiera");
+                "ayuda", "mensaje de prueba", "como estas", "no se", "texto cualquiera",
+                "adios", "saludos", "buenas tardes", "buenas noches", "quien eres");
     }
 
     private void add(Intent intent, String... examples) {
@@ -172,7 +208,9 @@ public class IntentAIModel {
             trainingData.put(intent, list);
         }
         for (String ex : examples) {
-            list.add(tokenize(normalize(ex)));
+            String normalized = normalize(ex);
+            String preprocessed = replaceSynonyms(normalized);
+            list.add(tokenize(preprocessed));
         }
     }
 
@@ -195,8 +233,8 @@ public class IntentAIModel {
         }
     }
 
-    private Prediction classify(String normalizedText) {
-        String[] tokens = tokenize(normalizedText);
+    private Prediction classify(String preprocessedText) {
+        String[] tokens = tokenize(preprocessedText);
         Intent bestIntent = Intent.INVALIDO;
         double bestScore = Double.NEGATIVE_INFINITY;
         double secondScore = Double.NEGATIVE_INFINITY;
@@ -212,6 +250,9 @@ public class IntentAIModel {
 
             for (String token : tokens) {
                 if (token.length() < 2) continue;
+                // CORRECCIÓN OOV: Ignorar palabras completamente desconocidas que no forman parte del vocabulario de entrenamiento
+                if (!vocabulary.contains(token)) continue;
+
                 int count = wc.containsKey(token) ? wc.get(token) : 0;
                 score += Math.log((count + 1.0) / (totalWords + vocabSize));
             }
@@ -229,7 +270,7 @@ public class IntentAIModel {
         return new Prediction(bestIntent, confidence);
     }
 
-    private Prediction validateAndBuildCommand(Prediction p, String rawText, String normalizedText) {
+    private Prediction validateAndBuildCommand(Prediction p, String rawText, String preprocessedText) {
         switch (p.intent) {
             case ENCENDER:
                 p.valid = true;
@@ -260,70 +301,138 @@ public class IntentAIModel {
                 return p;
 
             case SET_WIFI:
-                return buildWifiCommand(p, rawText, normalizedText);
+                return buildWifiCommand(p, rawText, preprocessedText);
 
             case SET_IP:
-                return buildServerCommand(p, rawText, normalizedText);
+                return buildServerCommand(p, rawText, preprocessedText);
 
             default:
                 return new Prediction(Intent.INVALIDO, p.confidence);
         }
     }
 
-    private Prediction buildWifiCommand(Prediction p, String rawText, String normalizedText) {
+    private static class WifiParams {
         String ssid = "";
-        String pass = "";
+        String password = "";
+    }
 
-        // Método 1: Búsqueda explícita con prefijos (por ejemplo: red: vale, contra: 123456)
-        ssid = findValue(rawText, "ssid", "red", "wifi");
-        pass = findValue(rawText, "password", "pass", "contrasena", "contraseña", "contra", "clave");
+    private WifiParams extractWifiParams(String rawText) {
+        WifiParams params = new WifiParams();
+        
+        // 1. Intentar buscar comillas (dobles, simples o curvadas)
+        // Reemplazar diferentes tipos de comillas por " para simplificar
+        String cleaned = rawText.replaceAll("[\"''“”指標]", "\"");
+        ArrayList<String> quoted = new ArrayList<>();
+        Matcher quoteMatcher = Pattern.compile("\"([^\"]+)\"").matcher(cleaned);
+        while (quoteMatcher.find()) {
+            quoted.add(quoteMatcher.group(1).trim());
+        }
+        
+        // Si hay comillas, asignarlas
+        if (quoted.size() >= 2) {
+            params.ssid = quoted.get(0);
+            params.password = quoted.get(1);
+            return params;
+        } else if (quoted.size() == 1) {
+            params.ssid = quoted.get(0);
+        }
 
-        // Método 2: Buscar comillas dobles o curvas (por ejemplo: red "vale" contraseña "1234")
-        if (ssid.length() == 0) {
-            ssid = findQuoted(rawText, 0);
-            if (pass.length() == 0) {
-                pass = findQuoted(rawText, 1);
+        // 2. Extracción heurística por palabras clave (SSID y Password)
+        String lower = rawText.toLowerCase();
+        int ssidIdx = -1;
+        String ssidKeyUsed = "";
+        String[] ssidKeys = {"ssid", "red", "wifi"};
+        for (String key : ssidKeys) {
+            int idx = lower.indexOf(key);
+            if (idx != -1 && (ssidIdx == -1 || idx < ssidIdx)) {
+                ssidIdx = idx;
+                ssidKeyUsed = key;
             }
         }
 
-        // Método 3: Análisis lingüístico mediante expresiones regulares robustas en español
-        if (ssid.length() == 0 || pass.length() == 0) {
-            // Intentamos capturar: red [SSID] con contra [PASS] o red [SSID] clave [PASS]
-            Pattern linguisticPattern = Pattern.compile(
-                "(?i)red\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?\\s+(?:con\\s+)?(?:contra|contrase[nñ]a|clave|pass|password)\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?"
-            );
-            Matcher m = linguisticPattern.matcher(rawText);
-            if (m.find()) {
-                if (ssid.length() == 0) ssid = m.group(1).trim();
-                if (pass.length() == 0) pass = m.group(2).trim();
+        int passIdx = -1;
+        String passKeyUsed = "";
+        String[] passKeys = {"password", "contrasena", "contraseña", "contra", "clave", "pass"};
+        for (String key : passKeys) {
+            int idx = lower.indexOf(key);
+            if (idx != -1 && (passIdx == -1 || idx < passIdx)) {
+                passIdx = idx;
+                passKeyUsed = key;
             }
         }
 
-        // Método 4: Búsqueda de palabra clave "contra/contraseña/clave" al final
-        if (ssid.length() == 0 || pass.length() == 0) {
-            Pattern passPattern = Pattern.compile("(?i)(?:contra|contrase[nñ]a|clave|pass|password)\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?");
-            Matcher m = passPattern.matcher(rawText);
-            if (m.find()) {
-                if (pass.length() == 0) pass = m.group(1).trim();
-                
-                Pattern ssidPattern = Pattern.compile("(?i)red\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?");
-                Matcher mSsid = ssidPattern.matcher(rawText);
-                if (mSsid.find() && ssid.length() == 0) {
-                    ssid = mSsid.group(1).trim();
+        // Caso A: Se encontraron ambos y el SSID va antes que el Password (e.g. "red Casa con contra 123")
+        if (ssidIdx != -1 && passIdx != -1 && ssidIdx < passIdx) {
+            if (params.ssid.isEmpty()) {
+                String ssidPart = rawText.substring(ssidIdx + ssidKeyUsed.length(), passIdx).trim();
+                // Limpiar conectores comunes al inicio y final
+                ssidPart = ssidPart.replaceAll("^(?i)(?:de\\s+|la\\s+|con\\s+|a\\s+)+", "");
+                ssidPart = ssidPart.replaceAll("(?i)\\s+(?:con|de|la|a)$", "");
+                ssidPart = ssidPart.replaceAll("^[:=,\\s]+", "").replaceAll("[:=,\\s]+$", "");
+                params.ssid = ssidPart.trim();
+            }
+            if (params.password.isEmpty()) {
+                String passPart = rawText.substring(passIdx + passKeyUsed.length()).trim();
+                passPart = passPart.replaceAll("^[:=,\\s]+", "");
+                int endIdx = passPart.indexOf('\n');
+                if (endIdx != -1) passPart = passPart.substring(0, endIdx);
+                params.password = passPart.trim();
+            }
+        }
+        // Caso B: Se encontraron ambos y el Password va antes que el SSID (e.g. "contra 123 red Casa")
+        else if (ssidIdx != -1 && passIdx != -1 && passIdx < ssidIdx) {
+            if (params.password.isEmpty()) {
+                String passPart = rawText.substring(passIdx + passKeyUsed.length(), ssidIdx).trim();
+                passPart = passPart.replaceAll("^(?i)(?:de\\s+|la\\s+|con\\s+|a\\s+)+", "");
+                passPart = passPart.replaceAll("(?i)\\s+(?:con|de|la|a)$", "");
+                passPart = passPart.replaceAll("^[:=,\\s]+", "").replaceAll("[:=,\\s]+$", "");
+                params.password = passPart.trim();
+            }
+            if (params.ssid.isEmpty()) {
+                String ssidPart = rawText.substring(ssidIdx + ssidKeyUsed.length()).trim();
+                ssidPart = ssidPart.replaceAll("^[:=,\\s]+", "");
+                int endIdx = ssidPart.indexOf('\n');
+                if (endIdx != -1) ssidPart = ssidPart.substring(0, endIdx);
+                params.ssid = ssidPart.trim();
+            }
+        }
+        // Caso C: Solo se encontró el SSID (e.g. "conecta al wifi Mi Red")
+        else if (ssidIdx != -1 && params.ssid.isEmpty()) {
+            String ssidPart = rawText.substring(ssidIdx + ssidKeyUsed.length()).trim();
+            ssidPart = ssidPart.replaceAll("^(?i)(?:de\\s+|la\\s+|con\\s+|a\\s+)+", "");
+            ssidPart = ssidPart.replaceAll("^[:=,\\s]+", "");
+            int endIdx = ssidPart.indexOf('\n');
+            if (endIdx != -1) ssidPart = ssidPart.substring(0, endIdx);
+            params.ssid = ssidPart.trim();
+        }
+        // Caso D: Solo se encontró el Password
+        else if (passIdx != -1 && params.password.isEmpty()) {
+            String passPart = rawText.substring(passIdx + passKeyUsed.length()).trim();
+            passPart = passPart.replaceAll("^[:=,\\s]+", "");
+            int endIdx = passPart.indexOf('\n');
+            if (endIdx != -1) passPart = passPart.substring(0, endIdx);
+            params.password = passPart.trim();
+        }
+
+        // Si tenemos contraseña pero falta SSID, intentar extraer la palabra antes de la contraseña
+        if (params.ssid.isEmpty() && !params.password.isEmpty() && passIdx > 0) {
+            String beforePass = rawText.substring(0, passIdx).trim();
+            String[] words = beforePass.split("\\s+");
+            if (words.length > 0) {
+                String candidate = words[words.length - 1];
+                if (!candidate.toLowerCase().matches("^(con|de|la|el|a|y)$")) {
+                    params.ssid = candidate;
                 }
             }
         }
 
-        // Si aún así no tenemos el SSID pero el usuario escribió "red [Nombre]"
-        if (ssid.length() == 0) {
-            Pattern ssidPattern = Pattern.compile("(?i)red\\s+[\"''“”‘’]?([a-zA-Z0-9_-]+)[\"''“”‘’]?");
-            Matcher mSsid = ssidPattern.matcher(rawText);
-            if (mSsid.find()) {
-                ssid = mSsid.group(1).trim();
-            }
-        }
+        return params;
+    }
 
-        if (ssid.length() == 0) {
+    private Prediction buildWifiCommand(Prediction p, String rawText, String preprocessedText) {
+        WifiParams params = extractWifiParams(rawText);
+
+        if (params.ssid.isEmpty()) {
             p.valid = false;
             p.officialCommand = "SET WIFI INVALIDO";
             p.userResponse = "IA: intencion SET WIFI detectada, pero falta SSID/red. No se ejecuto.";
@@ -332,18 +441,42 @@ public class IntentAIModel {
 
         p.valid = true;
         p.officialCommand = "SET WIFI";
-        if (pass.length() == 0) {
-            p.bluetoothPayload = "set wifi \"" + ssid + "\"\n";
+        if (params.password.isEmpty()) {
+            p.bluetoothPayload = "set wifi \"" + params.ssid + "\"\n";
         } else {
-            p.bluetoothPayload = "set wifi \"" + ssid + "\" " + pass + "\n";
+            p.bluetoothPayload = "set wifi \"" + params.ssid + "\" " + params.password + "\n";
         }
         p.userResponse = "IA: instruccion detectada SET WIFI. Enviando nueva red al ESP32.";
         return p;
     }
 
-    private Prediction buildServerCommand(Prediction p, String rawText, String normalizedText) {
+    private Prediction buildServerCommand(Prediction p, String rawText, String preprocessedText) {
         String host = findIpOrHost(rawText);
         int port = findPort(rawText);
+
+        if (host.length() == 0) {
+            // Extracción heurística si no coincide con los formatos IP/dominio estrictos
+            String lower = rawText.toLowerCase();
+            int serverIdx = -1;
+            String[] serverKeys = {"servidor", "server", "ip", "host"};
+            String keyUsed = "";
+            for (String key : serverKeys) {
+                int idx = lower.indexOf(key);
+                if (idx != -1 && (serverIdx == -1 || idx < serverIdx)) {
+                    serverIdx = idx;
+                    keyUsed = key;
+                }
+            }
+            if (serverIdx != -1) {
+                String candidate = rawText.substring(serverIdx + keyUsed.length()).trim();
+                candidate = candidate.replaceAll("^[:=,\\s]+", "");
+                candidate = candidate.replaceAll("^(?i)(?:de\\s+|la\\s+|con\\s+|a\\s+|en\\s+)+", "");
+                String[] words = candidate.split("\\s+");
+                if (words.length > 0) {
+                    host = words[0].replaceAll("[^a-zA-Z0-9.-]", "");
+                }
+            }
+        }
 
         if (host.length() == 0) {
             p.valid = false;
@@ -365,7 +498,7 @@ public class IntentAIModel {
 
     private String findValue(String raw, String... keys) {
         for (String key : keys) {
-            Pattern p = Pattern.compile("(?i)" + Pattern.quote(key) + "\\s*[:=]\\s*[\"''“”‘’]?([^\\\";,\\n]+)[\"''“”‘’]?");
+            Pattern p = Pattern.compile("(?i)" + Pattern.quote(key) + "\\s*[:=]\\s*[\"''“”指標]?([^\\\";,\\n]+)[\"''“”指標]?");
             Matcher m = p.matcher(raw);
             if (m.find()) return m.group(1).trim();
         }
@@ -373,7 +506,7 @@ public class IntentAIModel {
     }
 
     private String findQuoted(String raw, int index) {
-        Matcher m = Pattern.compile("[\"''“”‘’]([^\"''“”‘’]+)[\"''“”‘’]").matcher(raw);
+        Matcher m = Pattern.compile("[\"''“”指標]([^\"''“”指標]+)[\"''指標]").matcher(raw);
         int i = 0;
         while (m.find()) {
             if (i == index) return m.group(1).trim();
