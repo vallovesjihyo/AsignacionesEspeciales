@@ -23,19 +23,24 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public class DashboardActivity extends Activity {
+import android.Manifest;
+import android.content.pm.PackageManager;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import androidx.appcompat.app.AppCompatActivity;
+
+public class DashboardActivity extends AppCompatActivity {
 
     private static final int LAUNCH_SIMPLE_ACTIVITY = 102;
+    private static final int PERMISSION_REQUEST_CODE = 123;
 
     private View vArduinoLed;
     private TextView tvArduinoStatus;
     private TextView tvArduinoBpm;
     private Button btnConnectArduino;
     private Button btnDisconnectArduino;
-    private Button btnEncender;
-    private Button btnApagar;
-    private Button btnStatus;
-    private Button btnReconnect;
+
 
     private View vGarminLed;
     private TextView tvGarminStatus;
@@ -84,16 +89,15 @@ public class DashboardActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_dashboard);
 
+        checkAndRequestPermissions();
+
         // Referenciar elementos de la interfaz
         vArduinoLed = findViewById(R.id.vArduinoLed);
         tvArduinoStatus = findViewById(R.id.tvArduinoStatus);
         tvArduinoBpm = findViewById(R.id.tvArduinoBpm);
         btnConnectArduino = findViewById(R.id.btnConnectArduino);
         btnDisconnectArduino = findViewById(R.id.btnDisconnectArduino);
-        btnEncender = findViewById(R.id.btnEncender);
-        btnApagar = findViewById(R.id.btnApagar);
-        btnStatus = findViewById(R.id.btnStatus);
-        btnReconnect = findViewById(R.id.btnReconnect);
+
 
         vGarminLed = findViewById(R.id.vGarminLed);
         tvGarminStatus = findViewById(R.id.tvGarminStatus);
@@ -119,11 +123,7 @@ public class DashboardActivity extends Activity {
         // DESCONECTAR ARDUINO
         btnDisconnectArduino.setOnClickListener(v -> sendControlCommand("disconnect_arduino", null, null));
 
-        // COMANDOS SERIAL ARDUINO
-        btnEncender.setOnClickListener(v -> sendControlCommand("write_arduino", "payload", "1\n"));
-        btnApagar.setOnClickListener(v -> sendControlCommand("write_arduino", "payload", "0\n"));
-        btnStatus.setOnClickListener(v -> sendControlCommand("write_arduino", "payload", "status\n"));
-        btnReconnect.setOnClickListener(v -> sendControlCommand("write_arduino", "payload", "reconnect\n"));
+
 
         // CONTROLES GARMIN
         btnStartGarmin.setOnClickListener(v -> sendControlCommand("start_garmin", null, null));
@@ -133,7 +133,39 @@ public class DashboardActivity extends Activity {
         btnClearTerminal.setOnClickListener(v -> tvServerLog.setText(""));
     }
 
+    private boolean hasBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
+                   ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+        }
+        return true;
+    }
+
+    private void checkAndRequestPermissions() {
+        if (!hasBluetoothPermissions()) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN},
+                    PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                sendControlCommand("request_status", null, null);
+            } else {
+                Toast.makeText(this, "Permisos de Bluetooth son requeridos", Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
     private void sendControlCommand(String command, String extraKey, String extraValue) {
+        if (!hasBluetoothPermissions()) {
+            checkAndRequestPermissions();
+            return;
+        }
         Intent intent = new Intent(this, MyService.class);
         intent.putExtra("command", command);
         if (extraKey != null && extraValue != null) {
@@ -151,6 +183,10 @@ public class DashboardActivity extends Activity {
     }
 
     private void sendConnectCommand(BluetoothDevice device) {
+        if (!hasBluetoothPermissions()) {
+            checkAndRequestPermissions();
+            return;
+        }
         Intent intent = new Intent(this, MyService.class);
         intent.putExtra("command", "connect_arduino");
         intent.putExtra(SimpleActivity.TAG_BLUETOOTH_DEVICE, device);
@@ -182,7 +218,9 @@ public class DashboardActivity extends Activity {
         }
 
         // Solicitar estado actual al servicio para poblar la UI al abrir la pantalla
-        sendControlCommand("request_status", null, null);
+        if (hasBluetoothPermissions()) {
+            sendControlCommand("request_status", null, null);
+        }
     }
 
     @Override

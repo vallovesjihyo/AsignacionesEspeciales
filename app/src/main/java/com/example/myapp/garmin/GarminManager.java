@@ -28,10 +28,11 @@ public class GarminManager {
     private IQApp myApp;
     private boolean isInitialized = false;
 
+    private boolean isDestroyed = false;
+
     public interface GarminDataListener {
         void onDataReceived(String bpm, int seq);
     }
-
 
     public interface GarminStatusListener {
         void onStatusChanged(String status);
@@ -47,39 +48,64 @@ public class GarminManager {
     }
 
     private void notifyStatus(String status) {
+        if (isDestroyed) return;
         Log.e(TAG, status);
         if (statusListener != null) {
             statusListener.onStatusChanged(status);
         }
-        // También enviar broadcast para la UI
         Intent intent = new Intent("GARMIN_STATUS_UPDATE");
         intent.putExtra("status", status);
         context.sendBroadcast(intent);
     }
 
+    private void onSdkReadyLogic() {
+        if (isDestroyed) return;
+        Log.e(TAG, "Garmin SDK Listo");
+        isInitialized = true;
+        notifyStatus("SDK listo. Buscando dispositivos...");
+        buscarDispositivos();
+    }
+
     public void initialize() {
+        if (isDestroyed) return;
         Log.e(TAG, "Inicializando GarminManager...");
         notifyStatus("Inicializando SDK...");
         
         try {
             connectIQ = ConnectIQ.getInstance(context, ConnectIQ.IQConnectType.WIRELESS);
+            
+            boolean isAlreadyReady = false;
+            try {
+                connectIQ.getKnownDevices();
+                isAlreadyReady = true;
+            } catch (InvalidStateException e) {
+                // Not initialized
+            } catch (Exception e) {
+                // Not initialized or other error
+            }
+
+            if (isAlreadyReady) {
+                Log.e(TAG, "SDK ya estaba inicializado, saltando inicializacion.");
+                onSdkReadyLogic();
+                return;
+            }
+
             connectIQ.initialize(context, true, new ConnectIQ.ConnectIQListener() {
                 @Override
                 public void onSdkReady() {
-                    Log.e(TAG, "Garmin SDK Listo");
-                    isInitialized = true;
-                    notifyStatus("SDK listo. Buscando dispositivos...");
-                    buscarDispositivos();
+                    onSdkReadyLogic();
                 }
 
                 @Override
                 public void onInitializeError(ConnectIQ.IQSdkErrorStatus err) {
+                    if (isDestroyed) return;
                     Log.e(TAG, "Error inicializando Garmin SDK: " + err.name());
                     notifyStatus("Error SDK: " + err.name());
                 }
 
                 @Override
                 public void onSdkShutDown() {
+                    if (isDestroyed) return;
                     Log.e(TAG, "Garmin SDK apagado");
                     isInitialized = false;
                     notifyStatus("SDK apagado");
@@ -92,6 +118,7 @@ public class GarminManager {
     }
 
     private void buscarDispositivos() {
+        if (isDestroyed) return;
         try {
             List<IQDevice> devices = connectIQ.getKnownDevices();
             if (devices != null && devices.size() > 0) {
@@ -122,12 +149,14 @@ public class GarminManager {
     }
 
     private void registrarApp() {
+        if (isDestroyed) return;
         myApp = new IQApp(MY_APP_ID);
         try {
             notifyStatus("Registrando app en reloj...");
             connectIQ.registerForAppEvents(connectedDevice, myApp, new ConnectIQ.IQApplicationEventListener() {
                 @Override
                 public void onMessageReceived(IQDevice device, IQApp app, List<Object> messages, ConnectIQ.IQMessageStatus status) {
+                    if (isDestroyed) return;
                     if (messages != null && messages.size() > 0) {
                         for (Object payload : messages) {
                             Log.d(TAG, ">>> MENSAJE RECIBIDO DEL RELOJ: " + payload.toString());
@@ -154,7 +183,6 @@ public class GarminManager {
                                 listener.onDataReceived(bpmRecibido, seqRecibido);
                                 notifyStatus("BPM: " + bpmRecibido + " (seq: " + seqRecibido + ")");
                             }
-
                         }
                     }
                 }
@@ -167,13 +195,23 @@ public class GarminManager {
     }
     
     public void destroy() {
+        isDestroyed = true;
         try {
-            if (connectIQ != null && connectedDevice != null && myApp != null) {
-                connectIQ.unregisterForApplicationEvents(connectedDevice, myApp);
+            if (connectIQ != null) {
+                if (connectedDevice != null && myApp != null) {
+                    try {
+                        connectIQ.unregisterForApplicationEvents(connectedDevice, myApp);
+                    } catch (InvalidStateException e) {
+                        Log.e(TAG, "Error unregister events", e);
+                    }
+                }
+                connectIQ = null;
             }
+            connectedDevice = null;
+            myApp = null;
             isInitialized = false;
-            notifyStatus("Desconectado");
-        } catch (InvalidStateException e) {
+            Log.e(TAG, "GarminManager destruido.");
+        } catch (Exception e) {
             Log.e(TAG, "Error al destruir GarminManager", e);
         }
     }

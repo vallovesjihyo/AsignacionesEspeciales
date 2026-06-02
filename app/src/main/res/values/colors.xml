@@ -7,4 +7,27 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Black Aesthetic palette -->
+    <color name="bg_dark">#FF1E1E1E</color>
+    <color name="bg_card">#FF000000</color>
+    <color name="bg_card_elevated">#FF1A1A1A</color>
+    <color name="bg_input">#FF000000</color>
+
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFAAAAAA</color>
+    <color name="text_hint">#FF666666</color>
+
+    <color name="accent_send">#FF000000</color>
+    <color name="accent_update">#FF000000</color>
+    <color name="accent_json">#FF000000</color>
+    <color name="accent_post">#FF000000</color>
+    <color name="accent_service">#FF000000</color>
+    <color name="accent_garmin">#FF000000</color>
+    <color name="accent_save">#FF000000</color>
+
+    <color name="status_bar">#FF000000</color>
+
+    <color name="header_start">#FF000000</color>
+    <color name="header_end">#FF111111</color>
 </resources>

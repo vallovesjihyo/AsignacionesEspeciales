@@ -1,134 +1,166 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    tools:context=".myproject.MainActivity">
-
-    <EditText
-        android:id="@+id/etMessage"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text=""
-        android:textSize="35dp" />
+    android:background="@color/bg_dark"
+    android:fillViewport="true"
+    tools:context=".MainActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:paddingBottom="24dp">
 
-        <Button
-            android:id="@+id/btSend"
+        <!-- ═══════════════════════════════════════════════ -->
+        <!--  HEADER con gradiente premium                  -->
+        <!-- ═══════════════════════════════════════════════ -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:backgroundTint="#B31002AB"
-            android:onClick="onSend"
-            android:layout_marginLeft="50dp"
-            android:layout_marginRight="50dp"
-            android:text="SEND" />
+            android:background="@drawable/bg_header"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingTop="48dp"
+            android:paddingBottom="40dp">
 
-        <Button
-            android:id="@+id/btUpdate"
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⚡"
+                android:textSize="36sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Calibrador de Sensores"
+                android:textColor="@color/white"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginTop="8dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Panel de Control IoT"
+                android:textColor="#B3FFFFFF"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:backgroundTint="#1D43A9"
-            android:layout_marginLeft="50dp"
-            android:layout_marginRight="50dp"
-            android:onClick="onUpdate"
-            android:text="UPDATE" />
+            android:orientation="vertical"
+            android:layout_marginTop="32dp"
+            android:paddingHorizontal="24dp">
+
+            <!-- ═══════════════════════════════════════════════ -->
+            <!--  CONEXIONES PRINCIPALES                        -->
+            <!-- ═══════════════════════════════════════════════ -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dispositivos"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:textAllCaps="true"
+                android:letterSpacing="0.1"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginBottom="16dp"
+                android:layout_marginStart="4dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btGarmin"
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:layout_marginBottom="16dp"
+                android:onClick="onGarmin"
+                android:text="CONECTAR RELOJ GARMIN"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05"
+                app:backgroundTint="@color/accent_garmin"
+                app:cornerRadius="24dp"
+                app:icon="@android:drawable/ic_menu_compass"
+                app:iconGravity="textStart"
+                app:iconSize="28dp"
+                app:iconTint="#FFFFFF" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btService"
+                android:layout_width="match_parent"
+                android:layout_height="72dp"
+                android:onClick="onService"
+                android:text="CONECTAR SENSOR BLUETOOTH"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.05"
+                app:backgroundTint="@color/accent_service"
+                app:cornerRadius="24dp"
+                app:icon="@android:drawable/stat_sys_data_bluetooth"
+                app:iconGravity="textStart"
+                app:iconSize="28dp"
+                app:iconTint="#FFFFFF" />
+
+            <!-- ═══════════════════════════════════════════════ -->
+            <!--  CONFIGURACIÓN DEL SERVIDOR                    -->
+            <!-- ═══════════════════════════════════════════════ -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Red y Servidor"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:textAllCaps="true"
+                android:letterSpacing="0.1"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginTop="40dp"
+                android:layout_marginBottom="16dp"
+                android:layout_marginStart="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_config_row"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <EditText
+                    android:id="@+id/etServerIp"
+                    android:layout_width="0dp"
+                    android:layout_height="50dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_input"
+                    android:hint="IP Servidor (ej: 192.168.1.100:3010)"
+                    android:inputType="text"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_hint"
+                    android:textSize="14sp"
+                    android:fontFamily="sans-serif" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btSaveIp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="50dp"
+                    android:layout_marginStart="12dp"
+                    android:onClick="onSaveIp"
+                    android:text="Guardar"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="@color/accent_save"
+                    app:cornerRadius="12dp" />
+            </LinearLayout>
+
+        </LinearLayout>
     </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="vertical">
-
-        <Button
-            android:id="@+id/btParser"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:backgroundTint="#0000FF"
-            android:onClick="onJSON"
-            android:layout_marginLeft="50dp"
-            android:layout_marginRight="50dp"
-            android:text=">> JSON"
-            app:strokeColor="#9C27B0" />
-
-        <Button
-            android:id="@+id/btPost"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:backgroundTint="#1168D9"
-            android:onClick="onPost"
-            android:layout_marginLeft="50dp"
-            android:layout_marginRight="50dp"
-            android:text="POST"
-            app:strokeColor="#4CAF50" />
-
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/btService"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:backgroundTint="#009688"
-        android:layout_marginLeft="50dp"
-        android:layout_marginRight="50dp"
-        android:onClick="onService"
-        android:text="Init Service" />
-
-    <Button
-        android:id="@+id/btGarmin"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:backgroundTint="#FF9800"
-        android:layout_marginLeft="50dp"
-        android:layout_marginRight="50dp"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="10dp"
-        android:onClick="onGarmin"
-        android:text="Abrir Central de Control" />
-
-    <!-- Configuración dinámica de la IP del Servidor debajo de Ver Monitor Garmin -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp"
-        android:background="#E0F2F1"
-        android:layout_marginLeft="50dp"
-        android:layout_marginRight="50dp"
-        android:layout_marginBottom="15dp"
-        android:gravity="center_vertical">
-
-        <EditText
-            android:id="@+id/etServerIp"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="IP Servidor (ej: 172.16.92.211:3010)"
-            android:textSize="14sp"
-            android:inputType="text" />
-
-        <Button
-            android:id="@+id/btSaveIp"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Guardar"
-            android:textSize="12sp"
-            android:backgroundTint="#00796B"
-            android:onClick="onSaveIp" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/tvResponse"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:backgroundTint="#17BFD1"
-        android:text="Response"
-        android:textSize="30dp" />
-
-</LinearLayout>
+</ScrollView>

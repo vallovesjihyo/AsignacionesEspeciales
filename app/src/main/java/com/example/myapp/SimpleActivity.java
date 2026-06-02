@@ -88,7 +88,13 @@ public class SimpleActivity extends Activity {
                 java.util.Set<BluetoothDevice> pairedDevices = bAdapter.getBondedDevices();
                 if (pairedDevices != null && pairedDevices.size() > 0) {
                     for (BluetoothDevice device : pairedDevices) {
-                        arrayDevices.add(device);
+                        String name = device.getName();
+                        if (name != null) {
+                            String lowerName = name.toLowerCase();
+                            if (lowerName.contains("arduino") || lowerName.contains("hc") || lowerName.contains("esp32") || lowerName.contains("bt") || lowerName.contains("spp")) {
+                                arrayDevices.add(device);
+                            }
+                        }
                     }
                     arrayAdapter.notifyDataSetChanged();
                 }
@@ -103,11 +109,14 @@ public class SimpleActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        this.unregisterReceiver(bReceiver);
+        try {
+            this.unregisterReceiver(bReceiver);
+        } catch (IllegalArgumentException e) {
+            Log.e("SimpleActivity", "Receiver no registrado", e);
+        }
     }
 
     public void onEnd(View v) {
-        this.unregisterReceiver(bReceiver);
         finish();
     }
 
@@ -166,17 +175,20 @@ public class SimpleActivity extends Activity {
                 if (dispositivo != null) {
                     String nombre = dispositivo.getName();
                     if (nombre != null && !nombre.isEmpty()) {
-                        // Evitar duplicados en la lista
-                        boolean exists = false;
-                        for (BluetoothDevice d : arrayDevices) {
-                            if (d.getAddress().equals(dispositivo.getAddress())) {
-                                exists = true;
-                                break;
+                        String lowerName = nombre.toLowerCase();
+                        if (lowerName.contains("arduino") || lowerName.contains("hc") || lowerName.contains("esp32") || lowerName.contains("bt") || lowerName.contains("spp")) {
+                            // Evitar duplicados en la lista
+                            boolean exists = false;
+                            for (BluetoothDevice d : arrayDevices) {
+                                if (d.getAddress().equals(dispositivo.getAddress())) {
+                                    exists = true;
+                                    break;
+                                }
                             }
-                        }
-                        if (!exists) {
-                            arrayDevices.add(dispositivo);
-                            arrayAdapter.notifyDataSetChanged();
+                            if (!exists) {
+                                arrayDevices.add(dispositivo);
+                                arrayAdapter.notifyDataSetChanged();
+                            }
                         }
                     }
                 }

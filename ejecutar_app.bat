@@ -31,23 +31,14 @@ echo [3/4] Compilando e Instalando aplicacion (Gradle Install)...
 echo -----------------------------------------------------------------------
 call gradlew.bat installDebug
 
-if %ERRORLEVEL% NEQ 0 (
-    color 0C
-    echo.
-    echo =======================================================================
-    echo [ERROR] Hubo un problema al compilar o instalar la aplicacion.
-    echo Revisa los mensajes de error de Gradle arriba.
-    echo =======================================================================
-    echo.
-    pause
-    exit /b %ERRORLEVEL%
-)
+if %ERRORLEVEL% NEQ 0 goto handle_install_error
 
+:continue_execution
 echo -----------------------------------------------------------------------
 echo [+] ¡Instalacion completada con exito!
 echo.
 echo [4/4] Iniciando la aplicacion en el dispositivo...
-%ADB% shell am start -n com.example.myapp/com.example.myapp.MainActivity
+%ADB% shell am start -n com.example.myapp/com.example.myapp.DashboardActivity
 
 if %ERRORLEVEL% NEQ 0 (
     echo [!] No se pudo iniciar automaticamente la actividad principal.
@@ -56,6 +47,39 @@ if %ERRORLEVEL% NEQ 0 (
     echo [+] ¡Aplicacion iniciada exitosamente!
 )
 
+goto fin
+
+:handle_install_error
+color 0C
+echo.
+echo =======================================================================
+echo [ERROR] Hubo un problema al compilar o instalar la aplicacion.
+echo.
+echo Si el error de arriba dice "INSTALL_FAILED_UPDATE_INCOMPATIBLE", 
+echo se debe a que la aplicacion ya existe en tu dispositivo con una firma
+echo digital diferente (por ejemplo, instalada desde otra computadora o proyecto).
+echo =======================================================================
+echo.
+set RESP=n
+set /p RESP="¿Deseas desinstalar la aplicacion existente e intentar de nuevo? (s/n): "
+if /i "%RESP%"=="s" (
+    echo.
+    echo [!] Desinstalando 'com.example.myapp' de tu dispositivo...
+    %ADB% uninstall com.example.myapp
+    echo.
+    echo [!] Reintentando instalacion...
+    call gradlew.bat installDebug
+    if %ERRORLEVEL% EQU 0 (
+        color 0A
+        echo [+] ¡Instalacion exitosa tras desinstalar la app conflictiva!
+        goto continue_execution
+    )
+)
+echo.
+pause
+exit /b %ERRORLEVEL%
+
+:fin
 echo.
 echo =======================================================================
 echo            PROCESO FINALIZADO CON EXITO

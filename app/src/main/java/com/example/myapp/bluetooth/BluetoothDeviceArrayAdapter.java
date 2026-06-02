@@ -66,6 +66,9 @@ public class BluetoothDeviceArrayAdapter extends ArrayAdapter
             tvNombre.setText("ERROR");
         }
 
+        tvNombre.setTextColor(android.graphics.Color.WHITE);
+        tvDireccion.setTextColor(android.graphics.Color.LTGRAY);
+
         // Devolvemos el elemento con los dos TextView cumplimentados
         return elemento;
     }
